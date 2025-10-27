@@ -5,9 +5,9 @@ output: html_notebook
 
 ```{r}
 # load necessary packages
-library(dplyr)
-library(Seurat)
-library(patchwork)
+library(dplyr) # 5.3.0
+library(Seurat) # 1.1.4
+library(patchwork) # 1.3.2
 ```
 
 ```{r}
@@ -126,7 +126,7 @@ VlnPlot(donor1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol =
 
 plot1 <- FeatureScatter(donor1, feature1 = "nCount_RNA", feature2 = "percent.mt")
 plot2 <- FeatureScatter(donor1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-plot1 + plot2
+plot1 + plot2 # patchwork combines them
 ```
 
 ```{r}
@@ -159,7 +159,7 @@ donor1 <- NormalizeData(donor1, normalization.method = "LogNormalize", scale.fac
 ```{r}
 # select 2000 highly variable genes
 donor1 <- FindVariableFeatures(donor1, selection.method = "vst", nfeatures = 2000)
-donor1 # has only 2000 genes which are highly variable across cells.
+donor1 # now only has 2000 genes which are highly variable across cells.
 ```
 
 
