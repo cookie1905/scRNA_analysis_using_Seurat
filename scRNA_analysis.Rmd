@@ -1,0 +1,364 @@
+---
+title: "scRNA Analysis Using Seurat"
+output: html_notebook
+---
+
+```{r}
+# load necessary packages
+library(dplyr)
+library(Seurat)
+library(patchwork)
+```
+
+```{r}
+# Set your working directory
+setwd("C:\\scRNA_analysis_using_Seurat")
+```
+
+```{r}
+#checking if working directory is set correctly
+getwd()
+```
+
+```{r}
+# SETUP THE SEURAT OBJECT
+```
+
+```{r}
+# loading dataset (cellranger ouput,  h5 file format)
+donor1_data <- Read10X_h5("data/Donor1_filtered_feature_bc_matrix.h5")
+
+```
+
+```{r}
+# check the number of genes and cells before any filtering
+# 33538  genes and 12185 cells
+
+dim(donor1_data)
+```
+
+```{r}
+# What does data in a count matrix look like?
+# Rows = genes
+# Columns = cells
+# Values = number of UMI counts (unique molecular identifiers) for that gene in that cell.
+
+donor1_data[21000:21001, 1:3] 
+```
+
+```{r}
+# Initialize the Seurat object with the raw (non-normalized data).
+donor1 <- CreateSeuratObject(
+  counts = donor1_data,
+  project = "Donor1",
+  min.cells = 3,   # keep genes expressed in >= 3 cells
+  min.features = 200   # keeps only cells that have at least 200 unique genes detected.
+)
+
+```
+
+```{r}
+donor1
+
+# - 21851 features: Number of genes remaining after your filtering.
+# - 12057 samples: Number of cells in your dataset after filtering.
+# - Within 1 assay: Seurat organizes data into assays; by default this is RNA, which contains your raw (non-normalized) counts.
+# - Active assay: The RNA assay is the currently active assay.
+# - RNA (21851 features, 0 variable features): It has 21851 genes. 0 variable features means we haven’t yet selected highly variable genes (HVGs) for downstream analysis.
+# - 1 layer present — counts: The assay has one layer, which is the raw count matrix. Layers in Seurat can also include normalized or scaled data if added later.
+
+```
+
+```{r}
+counts_matrix  <- GetAssayData(donor1[["RNA"]], layer = "counts")
+# counts_matrix
+
+counts_df <- as.data.frame(as.matrix(counts_matrix))
+
+```
+
+```{r}
+counts_df[1:5, 1:3]  # preview first 5 genes and 3 cells
+```
+
+```{r}
+
+# STANDARD PRE-PROCESSING WORKFLOW
+```
+
+```{r}
+# Quality Control and selecting cells for further analysis
+# QC metrics commonly used include:
+# 1. Number of unique genes detected = count of genes with ≥1 read/UMI 
+# 2. Total reads (or total UMIs) = all reads/UMIs in the cell 
+# 3. Percentage of reads that map to the mitochondrial genome 
+```
+
+```{r}
+# meta.data stores cell-level metadata (one row per cell)
+# nFeature_RNA stores unique genes/cells
+# nCount_RNA stores total reads/cells
+
+head(donor1@meta.data)
+```
+
+```{r}
+# Calculates the percentage of reads/UMIs from mitochondrial genes for each cell.
+# Stores the result as a numeric column (percent.mt) in the Seurat object’s metadata.
+
+# In human datasets, mitochondrial genes usually start with MT-.
+# For mouse datasets, use mt- instead.
+
+donor1[["percent.mt"]] <- PercentageFeatureSet(donor1, pattern = "^MT-")
+```
+
+
+```{r}
+head(donor1@meta.data)
+```
+
+```{r}
+# Visualize QC metrics as a violin plot
+VlnPlot(donor1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+
+plot1 <- FeatureScatter(donor1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(donor1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+```
+
+```{r}
+# filter cells that have unique feature counts over 8000 or less than 200
+# filter cells that have >20% mitochondrial counts
+donor1 <- subset(donor1, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mt < 20)
+```
+
+```{r}
+donor1
+```
+```{r}
+# Normalizing the data
+# log1p( (counts / total counts per cell) * scale.factor )
+donor1 <- NormalizeData(donor1, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+```{r}
+# donor1[["RNA"]]$data
+
+```
+
+```{r}
+# Feature selection
+# Identification of highly variable features (hvg's)
+# features that are highly expressed in some cells, and lowly expressed in others.
+
+```
+
+
+```{r}
+# select 2000 highly variable genes
+donor1 <- FindVariableFeatures(donor1, selection.method = "vst", nfeatures = 2000)
+donor1 # has only 2000 genes which are highly variable across cells.
+```
+
+
+```{r}
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(donor1), 10)
+top10
+
+```
+
+```{r}
+# Scaling the data
+# Shifts the expression of each gene, so that the mean expression across cells is 0 and the variance across cells is 1.
+# gives equal weight in downstream analyses, so that highly-expressed genes do not dominate
+# By default, only variable features are scaled.
+
+all.genes <- rownames(donor1)
+donor1 <- ScaleData(donor1, features = all.genes)
+```
+
+```{r}
+# ‘regress out’ heterogeneity associated with (for example) cell cycle stage, or mitochondrial contamination 
+donor1 <- ScaleData(donor1, vars.to.regress = "percent.mt")
+```
+
+```{r}
+# Reduces dimensionality of the high-dimensional gene expression data
+# PCA
+donor1 <- RunPCA(donor1) # By default, RunPCA() uses only the highly variable genes (HVGs) as input for PCA.
+
+```
+```{r}
+# For each selected PC, we get genes with the highest positive and negative loadings.
+# Loadings measure how much each gene contributes to that PC.
+# Positive loading → gene expression correlates positively with the PC
+# Negative loading → gene expression correlates negatively (anti-correlation)
+```
+
+```{r}
+VizDimLoadings(donor1, dims = 1:2, reduction = "pca", nfeatures = 20)
+```
+
+```{r}
+DimPlot(donor1, reduction = "pca") + NoLegend()
+```
+```{r}
+# visualize the expression of genes that drive a particular principal component across cells
+# dims=1 plots genes contributing to PC1
+# cells=500 shows the heatmap for 500 randomly selected cells
+# balanced = TRUE → ensures the heatmap shows both high and low expression extremes evenly
+
+DimHeatmap(donor1, dims = 1, cells = 500, balanced = TRUE)
+```
+```{r}
+# determine how many principal components (PCs) to retain for downstream analysis
+ElbowPlot(donor1)
+```
+
+```{r}
+# Cluster The Cells
+# Constructs a graph based on the PCs and clusters is done in PC space
+
+donor1 <- FindNeighbors(donor1, dims = 1:15)
+donor1 <- FindClusters(donor1, resolution = 0.25)
+```
+  
+```{r}
+# # visualize clusters in 2D
+donor1 <- RunUMAP(donor1, dims = 1:15) 
+
+DimPlot(donor1, reduction = "umap", label = TRUE)
+```
+
+```{r}
+# save the object
+# saveRDS(donor1, file = "donor1.rds")
+```
+
+```{r}
+# for each cluster, get the genes that are more highly expressed compared to all other clusters.
+# only.pos = TRUE → keeps only genes that are upregulated in the cluster (positive log fold change).
+
+donor1.markers <- FindAllMarkers(
+    donor1, 
+    only.pos = TRUE, 
+    min.pct = 0.25,       # only test genes expressed in ≥25% of cells
+    logfc.threshold = 0.25  # only test genes with log2FC ≥ 0.25
+)
+
+```
+```{r}
+# Note: increasing min.pct and logfc.threshold trades sensitivity for speed — you may miss genes expressed in fewer cells or with small fold changes, but the DE testing will complete much faster.
+```
+
+```{r}
+# Groups results by cluster.
+# Keeps only genes with log2 fold change > 1, i.e., genes strongly overexpressed in that cluster compared to others.
+
+donor1.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1)
+
+```
+
+```{r}
+# get top 3 upregulated genes for cluster 7
+
+top3_cluster7 <- donor1.markers %>%
+  filter(cluster == 7) %>%
+  arrange(desc(avg_log2FC)) %>%
+  head(3)
+
+top3_cluster7
+```
+
+```{r}
+VlnPlot(donor1, features = c("MMP8", "CMTM2", "ZDHHC19"))
+```
+```{r}
+DotPlot(object = donor1, features = c("MMP8", "CMTM2", "ZDHHC19"))
+```
+```{r}
+FeaturePlot(donor1, features = c("MMP8", "CMTM2", "ZDHHC19"))
+```
+
+```{r}
+donor1.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1.5) %>%
+    slice_head(n = 3) %>%
+    ungroup() -> top3
+DoHeatmap(donor1, features = top3$gene) + NoLegend()
+```
+```{r}
+top3
+
+```
+```{r}
+# Assigning cell type identity to clusters
+# Search above top3 genes for each cluster in PanglaoDB
+
+
+```
+
+```{r}
+# Cluster 0: CLDN5, TMEM100, FCN3 - Endothelial Cells. 
+# Cluster1: CD69, CD3D, CD3E - T Cells.
+# Cluster2: S100A2, IGFBP2, SFN - Basal Cells.
+# Cluster3:AIF1, LST1, CD163 - Dendritic Cells.
+# Cluster4: SCGB3A2,CYB5A,WFDC2 - Pulmonary Alveolar Type 2 Cells.
+# Cluster5: PIGR - cholangiocytes or Epithelial Cells?, C16orf89 - Pulmonary Alveolar Type 2 Cells, CP - hepatocytes or cholangiocytes?
+# Cluster6: DCN, COL1A2, LUM -Fibroblasts
+# Cluster7: S100A12, GCA,S100A8 - Dendritic Cells
+# Cluster8: GZMB,KLRD1,PRF1 - NK Cells
+# Cluster9: MZB1, IGHA2, DERL3 - Plasma Cells
+# Cluster10: COL6A3, SCN7A, MMP2 - Fibroblasts
+# Cluster11: C1QA, C1QB, C1QC: Dendritic Cells
+# Cluster12: EDNRB, IL1RL1, EMCN  - Endothelial Cells
+# Cluster13: AGER, CLDN18, SCEL - Pulmonary Alveolar Type 2 Cells
+# .....  
+```
+
+
+```{r}
+
+new.cluster.ids <- c(
+  "Endothelial Cells",      # cluster 0
+  "T Cells",       # cluster 1
+  "Basal Cells",     # cluster 2
+  "Dendritic Cells",                # cluster 3
+  "Pulmonary Alveolar Type 2 Cells",            # cluster 4
+  "Unknown 5",        # cluster 5
+  "Fibroblasts",        # cluster 6
+  "Dendritic Cells",        # cluster 7
+  "NK Cells",        # cluster 8
+  "Plasma Cells",        # cluster 9
+  "Fibroblasts",       # cluster 10
+  "Dendritic Cells",       # cluster 11
+  "Endothelial Cells",       # cluster 12
+  "Pulmonary Alveolar Type 2 Cells",       # cluster 13
+  "Unknown 14",       # cluster 14
+  "Unknown 15",       # cluster 15
+  "Unknown 16",       # cluster 16
+  "Unknown 17",       # cluster 17
+  "Unknown 18",       # cluster 18
+  "Unknown 19"        # cluster 19
+)
+
+```
+
+```{r}
+names(new.cluster.ids) <- levels(donor1)
+donor1 <- RenameIdents(donor1, new.cluster.ids)
+
+DimPlot(donor1, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+```{r}
+saveRDS(donor1, file = "donor1.rds")
+```
+
+
