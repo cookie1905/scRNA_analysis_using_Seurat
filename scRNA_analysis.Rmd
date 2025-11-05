@@ -180,27 +180,25 @@ saveRDS(combined, file = "data/combined.rds")
 ```
 
 
-```{r}
-# for each cluster, get the genes that are more highly expressed compared to all other clusters.
-# only.pos = TRUE → keeps only genes that are upregulated in the cluster (positive log fold change).
 
-donor1.markers <- FindAllMarkers(
-    donor1, 
-    only.pos = TRUE, 
-    min.pct = 0.25,       # only test genes expressed in ≥25% of cells
-    logfc.threshold = 0.25  # only test genes with log2FC ≥ 0.25
-)
+```{r}
+# find markers for every cluster compared to all remaining cells, report only the positive
+# ones
+
+combined <- JoinLayers(combined)
+combined.markers <- FindAllMarkers(combined,
+                                   only.pos = TRUE,
+                                   min.pct = 0.25,
+                                   logfc.threshold = 0.5)
 
 ```
-```{r}
-# Note: increasing min.pct and logfc.threshold trades sensitivity for speed — you may miss genes expressed in fewer cells or with small fold changes, but the DE testing will complete much faster.
-```
+
 
 ```{r}
 # Groups results by cluster.
 # Keeps only genes with log2 fold change > 1, i.e., genes strongly overexpressed in that cluster compared to others.
 
-donor1.markers %>%
+combined.markers %>%
     group_by(cluster) %>%
     dplyr::filter(avg_log2FC > 1)
 
@@ -209,7 +207,7 @@ donor1.markers %>%
 ```{r}
 # get top 3 upregulated genes for cluster 7
 
-top3_cluster7 <- donor1.markers %>%
+top3_cluster7 <- combined.markers %>%
   filter(cluster == 7) %>%
   arrange(desc(avg_log2FC)) %>%
   head(3)
@@ -218,31 +216,34 @@ top3_cluster7
 ```
 
 ```{r}
-VlnPlot(donor1, features = c("MMP8", "CMTM2", "ZDHHC19"))
-```
-```{r}
-DotPlot(object = donor1, features = c("MMP8", "CMTM2", "ZDHHC19"))
-```
-```{r}
-FeaturePlot(donor1, features = c("MMP8", "CMTM2", "ZDHHC19"))
+VlnPlot(combined, features = c("SELE", "CADM3-AS1", "MEOX1"))
 ```
 
 ```{r}
-donor1.markers %>%
+DotPlot(combined, features = c("SELE", "CADM3-AS1", "MEOX1"))
+```
+
+
+```{r}
+FeaturePlot(combined, features = c("SELE", "CADM3-AS1", "MEOX1"))
+```
+
+```{r}
+combined.markers %>%
     group_by(cluster) %>%
     dplyr::filter(avg_log2FC > 1.5) %>%
     slice_head(n = 3) %>%
     ungroup() -> top3
-DoHeatmap(donor1, features = top3$gene) + NoLegend()
-```
-```{r}
-top3
 
+DoHeatmap(combined, features = top3$gene) + NoLegend()
 ```
+
+
+
 ```{r}
 # Assigning cell type identity to clusters
-# Search above top3 genes for each cluster in PanglaoDB
-
+# Search top3 genes for each cluster in PanglaoDB
+top3
 
 ```
 
@@ -273,7 +274,7 @@ new.cluster.ids <- c(
   "Basal Cells",     # cluster 2
   "Dendritic Cells",                # cluster 3
   "Pulmonary Alveolar Type 2 Cells",            # cluster 4
-  "Unknown 5",        # cluster 5
+  "Unknown",        # cluster 5
   "Fibroblasts",        # cluster 6
   "Dendritic Cells",        # cluster 7
   "NK Cells",        # cluster 8
@@ -282,25 +283,39 @@ new.cluster.ids <- c(
   "Dendritic Cells",       # cluster 11
   "Endothelial Cells",       # cluster 12
   "Pulmonary Alveolar Type 2 Cells",       # cluster 13
-  "Unknown 14",       # cluster 14
-  "Unknown 15",       # cluster 15
-  "Unknown 16",       # cluster 16
-  "Unknown 17",       # cluster 17
-  "Unknown 18",       # cluster 18
-  "Unknown 19"        # cluster 19
+  "Unknown",       # cluster 14
+  "Unknown",       # cluster 15
+  "Unknown",       # cluster 16
+  "Unknown",       # cluster 17
+  "Unknown",       # cluster 18
+  "Unknown"        # cluster 19
 )
 
 ```
 
-```{r}
-names(new.cluster.ids) <- levels(donor1)
-donor1 <- RenameIdents(donor1, new.cluster.ids)
 
-DimPlot(donor1, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```{r}
+names(new.cluster.ids) <- levels(combined)
+combined <- RenameIdents(combined, new.cluster.ids)
 ```
 
 ```{r}
-saveRDS(donor1, file = "donor1.rds")
+DimPlot(combined, reduction = "umap", pt.size = 0.5, label = TRUE) 
 ```
 
+```{r}
+# Idents(combined) # give cell barcode and its assigned cell type
+
+# Save the manual cluster assignment to a new metadata column
+combined$manual_assignment <- Idents(combined)
+
+```
+
+```{r}
+combined[[]] # manual_assignment column is added to the metadata 
+```
+
+```{r}
+DimPlot(combined, group.by = "manual_assignment", reduction = "umap", label = TRUE, pt.size = 0.5)
+```
 

@@ -59,8 +59,9 @@ plot1 + plot2
 combined <- subset(combined, subset = nFeature_RNA > 200 & nFeature_RNA < 7500 & percent.mt < 20)
 dim(combined)
 
+# make gene expression comparable across cells.
 combined <- NormalizeData(combined, normalization.method = "LogNormalize", scale.factor = 10000)
-head(combined[["RNA"]]$data) # Normalized counts is in layer data
+head(combined[["RNA"]]$data) # Normalized counts is stored in layer- data
 
 combined <-  FindVariableFeatures(combined, selection.method = "vst", nfeatures = 2000)
 combined
@@ -69,9 +70,9 @@ combined
 top10 <- head(VariableFeatures(combined), 10)
 top10
 
-
-# all.genes <- rownames(combined)
-# combined <- ScaleData(combined, features = all.genes)
+# ScaleData standardizes each gene to have 0 mean and variance 1
+# Remove the effect of mitochondrial percentage from the gene expression data.
+# Fits a linear model for each gene and subtracts the part explained by percent.mt.
 
 combined <- ScaleData(combined, vars.to.regress = "percent.mt")
 
@@ -85,3 +86,5 @@ combined <- RunUMAP(combined, dims = 1:10)
 DimPlot(combined, reduction = "umap", label = TRUE)
 
 saveRDS(combined, file = "data/combined.rds")
+# combined <- readRDS("data/combined.rds")
+
